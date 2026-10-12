@@ -1,0 +1,109 @@
+
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROGRAM="${0##*/}"
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/unix-tools/wake-lab.conf"
+
+if [[ ! -r "$CONFIG_FILE" ]]; then
+  printf 'Error: configuration not found: %s\n' \
+    "$CONFIG_FILE" >&2
+  exit 1
+fi
+
+# Configuration is trusted local Bash code.
+source "$CONFIG_FILE"
+
+if ! declare -p HOMELAB 2>/dev/null |
+     grep -q '^declare -A '; then
+  echo "Error: HOMELAB associative array is not defined" >&2
+  exit 1
+fi
+
+usage() {
+  cat <<EOF
+Usage: ${PROGRAM} [--help] <all | host [host ...]>
+
+Wake up homelab computers using Wake-on-LAN.
+
+Arguments:
+  all              Wake up all configured hosts
+  host [host ...]  Wake up one or more selected hosts
+
+Options:
+  -h, --help       Show this help message
+
+Available hosts:
+EOF
+
+  printf '  %s\n' "${!HOMELAB[@]}" | sort
+
+  cat <<EOF
+
+Examples:
+  ${PROGRAM} all
+  ${PROGRAM} NAS
+  ${PROGRAM} NAS SERVER
+EOF
+}
+
+error() {
+  printf 'Error: %s\n' "$1" >&2
+}
+
+wake_host() {
+  local host="$1"
+
+  printf 'Waking up %-12s [%s]\n' \
+    "$host" "${HOMELAB[$host]}"
+
+  wakeonlan "${HOMELAB[$host]}"
+}
+
+main() {
+  local host
+  local -a hosts=()
+
+  if (( $# == 0 )); then
+    usage >&2
+    return 2
+  fi
+
+  case "$1" in
+    -h|--help)
+      usage
+      return 0
+      ;;
+    all)
+      if (( $# != 1 )); then
+        error "'all' cannot be combined with other hosts"
+        return 2
+      fi
+
+      hosts=("${!HOMELAB[@]}")
+      ;;
+    *)
+      hosts=("$@")
+      ;;
+  esac
+
+  for host in "${hosts[@]}"; do
+    if [[ ! -v HOMELAB[$host] ]]; then
+      error "unknown host: $host"
+      return 2
+    fi
+  done
+
+  if ! command -v wakeonlan >/dev/null 2>&1; then
+    error "wakeonlan is not installed"
+    return 1
+  fi
+
+  for host in "${hosts[@]}"; do
+    wake_host "$host"
+  done
+}
+
+main "$@"
+

@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Editors
+*.swp
+*.swo
+*~
+
+# Private configuration
+*.conf
+!*.conf.example
+
+# Environment
+.env
+.env.*
+

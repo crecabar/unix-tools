@@ -1,0 +1,9 @@
+# Wake-on-LAN hosts
+#
+# Replace these addresses with your own MAC addresses.
+
+declare -A HOMELAB=(
+  [NAS]="00:11:22:33:44:55"
+  [SERVER]="AA:BB:CC:DD:EE:FF"
+)
+
