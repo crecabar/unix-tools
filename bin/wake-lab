@@ -1,25 +1,9 @@
-
 #!/usr/bin/env bash
 
 set -euo pipefail
 
 PROGRAM="${0##*/}"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/unix-tools/wake-lab.conf"
-
-if [[ ! -r "$CONFIG_FILE" ]]; then
-  printf 'Error: configuration not found: %s\n' \
-    "$CONFIG_FILE" >&2
-  exit 1
-fi
-
-# Configuration is trusted local Bash code.
-source "$CONFIG_FILE"
-
-if ! declare -p HOMELAB 2>/dev/null |
-     grep -q '^declare -A '; then
-  echo "Error: HOMELAB associative array is not defined" >&2
-  exit 1
-fi
 
 usage() {
   cat <<EOF
@@ -37,14 +21,22 @@ Options:
 Available hosts:
 EOF
 
-  printf '  %s\n' "${!HOMELAB[@]}" | sort
+  if declare -p HOMELAB &>/dev/null; then
+    if (( ${#HOMELAB[@]} > 0 )); then
+      printf '  %s\n' "${!HOMELAB[@]}" | sort
+    else
+      printf '  (no hosts configured)\n'
+    fi
+  else
+    printf '  (not configured)\n'
+  fi
 
   cat <<EOF
 
 Examples:
   ${PROGRAM} all
-  ${PROGRAM} NAS
-  ${PROGRAM} NAS SERVER
+  ${PROGRAM} HOST1
+  ${PROGRAM} HOST1 HOST2
 EOF
 }
 
@@ -65,6 +57,13 @@ main() {
   local host
   local -a hosts=()
 
+  # Load configuration if available
+  if [[ -r "$CONFIG_FILE" ]]; then
+    # Configuration is trusted local Bash code.
+    source "$CONFIG_FILE"
+  fi
+
+  # Handle help before requiring configuration
   if (( $# == 0 )); then
     usage >&2
     return 2
@@ -75,6 +74,22 @@ main() {
       usage
       return 0
       ;;
+  esac
+
+  # Configuration is mandatory for operational commands
+  if [[ ! -r "$CONFIG_FILE" ]]; then
+    error "configuration not found: $CONFIG_FILE"
+    return 1
+  fi
+
+  if ! declare -p HOMELAB 2>/dev/null |
+       grep -q '^declare -A '; then
+    error "HOMELAB associative array is not defined"
+    return 1
+  fi
+
+  # Resolve requested hosts
+  case "$1" in
     all)
       if (( $# != 1 )); then
         error "'all' cannot be combined with other hosts"
@@ -88,6 +103,7 @@ main() {
       ;;
   esac
 
+  # Validate all hosts before sending packets
   for host in "${hosts[@]}"; do
     if [[ ! -v HOMELAB[$host] ]]; then
       error "unknown host: $host"
@@ -95,6 +111,7 @@ main() {
     fi
   done
 
+  # Check dependency
   if ! command -v wakeonlan >/dev/null 2>&1; then
     error "wakeonlan is not installed"
     return 1
@@ -106,4 +123,3 @@ main() {
 }
 
 main "$@"
-
